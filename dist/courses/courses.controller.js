@@ -25,6 +25,18 @@ let CoursesController = class CoursesController {
         const userId = req.user.sub;
         return this.coursesService.createOrEnrollCourse(createCourseDto, userId);
     }
+    async getAvailableCourses(req) {
+        const userId = req.user.sub;
+        return this.coursesService.getAvailableCourses(userId);
+    }
+    async getEnrolledCourses(req) {
+        const userId = req.user.sub;
+        return this.coursesService.getEnrolledCourses(userId);
+    }
+    async getLearningContent(courseId, questionId, req) {
+        const userId = req.user.sub;
+        return this.coursesService.getLearningContent(courseId, userId, questionId);
+    }
 };
 exports.CoursesController = CoursesController;
 __decorate([
@@ -36,6 +48,32 @@ __decorate([
     __metadata("design:paramtypes", [create_course_dto_1.CreateCourseDto, Object]),
     __metadata("design:returntype", Promise)
 ], CoursesController.prototype, "createCourse", null);
+__decorate([
+    (0, common_1.Get)('available'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], CoursesController.prototype, "getAvailableCourses", null);
+__decorate([
+    (0, common_1.Get)('enrolled'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], CoursesController.prototype, "getEnrolledCourses", null);
+__decorate([
+    (0, common_1.Get)('learn/:courseId'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    __param(0, (0, common_1.Param)('courseId')),
+    __param(1, (0, common_1.Query)('questionId')),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], CoursesController.prototype, "getLearningContent", null);
 exports.CoursesController = CoursesController = __decorate([
     (0, common_1.Controller)('courses'),
     __metadata("design:paramtypes", [courses_service_1.CoursesService])
