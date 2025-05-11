@@ -1,11 +1,12 @@
 // courses/courses.controller.ts
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, Req, Request, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { CourseResponseDto } from './dto/course-response.dto';
 import { LearnResponseDto } from './dto/learn-response.dto';
 import { FinishContentDto } from './dto/finish-content.dto';
+import { UUIDTypes } from 'uuid';
 
 @Controller('courses')
 export class CoursesController {
@@ -36,7 +37,7 @@ export class CoursesController {
   @UseGuards(AuthGuard)
   async getLearningContent(
     @Param('courseId') courseId: string,
-    @Query('questionId') questionId: string,
+    @Query('questionId') questionId: UUIDTypes,
     @Req() req
   ): Promise<LearnResponseDto> {
     const userId = req.user.sub;
@@ -48,14 +49,62 @@ export class CoursesController {
   async finishContent(
     @Body() finishContentDto: FinishContentDto,
     @Req() req
+  ): Promise<{
+    success: boolean;
+    completed: boolean;
+    totalContent: number;
+    progress: number;
+    progressPercentage: number;
+  }> {
+    const userId = req.user.sub;
+    const { courseId, contentId, type } = finishContentDto;
+
+    const {
+      totalProgress,
+      completed,
+      totalContent,
+      progress,
+      progressPercentage
+    } = await this.coursesService.markContentAsFinished(
+      courseId,
+      userId,
+      contentId,
+      type
+    );
+
+    return {
+      success: true,
+      completed,
+      totalContent,
+      progress,
+      progressPercentage
+    };
+  }
+
+
+  @Post('enroll')
+  @UseGuards(AuthGuard)
+  async enrollInCourse(
+    @Body() body: { courseId: string },
+    @Req() req
   ): Promise<{ success: boolean }> {
     const userId = req.user.sub;
-    await this.coursesService.markContentAsFinished(
-      finishContentDto.courseId,
-      userId,
-      finishContentDto.contentId,
-      finishContentDto.type
-    );
+    const { courseId } = body;
+
+    await this.coursesService.enrollInCourse(courseId, userId);
+
     return { success: true };
   }
+
+
+  @Delete(':courseId/progress')
+  @UseGuards(AuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async resetProgress(
+    @Param('courseId') courseId: string,
+    @Request() req: any
+  ) {
+    return this.coursesService.resetCourseProgress(courseId, req.user.sub);
+  }
+
 }

@@ -3,6 +3,8 @@ export declare class LearnResponseDto {
     id: string;
     title?: string;
     text?: string;
+    recommendedQuestions?: any;
+    requestedQuestion?: any;
     question?: {
         id: string;
         text: string;

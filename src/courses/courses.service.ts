@@ -1,9 +1,9 @@
 // courses/courses.service.ts
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Neo4jService } from 'nest-neo4j';
 import { CreateCourseDto } from './dto/create-course.dto';
 import * as levenshtein from 'fastest-levenshtein';
-import { v4 as uuidv4 } from 'uuid';
+import { UUIDTypes, v4 as uuidv4 } from 'uuid';
 import { CourseGenerator } from 'src/common/utils/llm-utils';
 import { CourseResponseDto } from './dto/course-response.dto';
 import { formatNeo4jDate } from 'src/common/utils/neo4j-date-util';
@@ -264,7 +264,7 @@ export class CoursesService {
 
   // main feature
   // courses/courses.service.ts
-  async getLearningContent(courseId: string, userId: string, questionId?: string): Promise<LearnResponseDto> {
+  async getLearningContent(courseId: string, userId: string, questionId?: UUIDTypes): Promise<LearnResponseDto> {
     // Verify user is enrolled
     const isEnrolled = await this.neo4jService.read(
       `MATCH (u:User {userId: $userId})-[:ENROLLED_IN]->(c:Course {courseId: $courseId})
@@ -281,29 +281,108 @@ export class CoursesService {
 
     // Get next content based on progress
     const progress = await this.getUserProgress(courseId, userId);
+    const totalCount = await this.getTotalItemsCount(courseId)
+
+    if(progress.finishedCount == totalCount) {
+      return {
+          type:'content',
+            id:'',
+            title: '',
+            text: '',
+            recommendedQuestions: [],
+            currentProgress: progress.finishedCount,
+            totalItems: await this.getTotalItemsCount(courseId)
+      }
+    }
 
     if (progress.finishedCount === 0) {
       return this.getFirstChapterContent(courseId, userId);
     }
 
-    return this.getNextUnfinishedContent(courseId, userId, progress);
+    return this.getNextUnfinishedItem(courseId, userId);
   }
 
-  private async getQuestionWithAnswer(courseId: string, userId: string, questionId: string): Promise<LearnResponseDto> {
-    const result = await this.neo4jService.read(
-      `
+private async getNextUnfinishedItem(courseId: string, userId: string): Promise<LearnResponseDto> {
+    try {
+        const result = await this.neo4jService.read(
+            `MATCH (u:User {userId: $userId})
+             MATCH (c:Course {courseId: $courseId})-[:HAS_CHAPTER]->(chapter:Chapter)
+             OPTIONAL MATCH (chapter)-[:HAS_SUBCONTENT]->(subcontent:SubContent)
+             
+             // Collect all content items (chapters and subcontents)
+             WITH u, c, COLLECT(chapter) + COLLECT(subcontent) AS allContents
+             UNWIND allContents AS content
+             WITH u, content
+             WHERE content IS NOT NULL
+                AND NOT (u)-[:FINISHED]->(content)
+             
+             // Order by creation date (oldest first)
+             WITH u, content ORDER BY content.createdAt LIMIT 1
+             
+             // Get questions from this content that user hasn't answered
+             OPTIONAL MATCH (content)-[:HAS_QUESTION]->(question:Question)
+             WHERE NOT (u)-[:ANSWERED]->(question)
+             
+             RETURN content, labels(content) AS contentLabels, 
+                    COLLECT(DISTINCT question)[0..5] AS questions`,
+            { courseId, userId }
+        );
+
+        if (result.records.length === 0) {
+            throw new NotFoundException('No unfinished content found in this course');
+        }
+
+        const record = result.records[0];
+        const content = record.get('content').properties;
+        const contentLabels = record.get('contentLabels');
+        const questions = record.get('questions')
+            .filter(q => q) // Filter out nulls
+            .map(q => ({
+                id: q.properties.questionId,
+                text: q.properties.text
+            }));
+
+        const type = contentLabels.includes('Chapter') ? 'content' : 'subcontent';
+        const id = content.chapterId || content.subContentId;
+
+        return {
+            type,
+            id,
+            title: content.title,
+            text: content.content,
+            recommendedQuestions: questions,
+            currentProgress: (await this.getUserProgress(courseId, userId)).finishedCount,
+            totalItems: await this.getTotalItemsCount(courseId)
+        };
+    } catch (error) {
+        console.error(error);
+        throw new InternalServerErrorException('Failed to fetch learning content');
+    }
+}
+
+  private async getQuestionWithAnswer(courseId: string, userId: string, questionId: UUIDTypes): Promise<LearnResponseDto> {
+    try {
+      const result = await this.neo4jService.read(
+        `
         MATCH (u:User {userId: $userId})-[:ENROLLED_IN]->(c:Course {courseId: $courseId})
         MATCH (q:Question {questionId: $questionId})-[:HAS_ANSWER]->(a:Answer)
         MATCH (parent)-[:HAS_QUESTION]->(q)
-        WITH u, q, a, parent, labels(parent) AS parentLabels
-        OPTIONAL MATCH (parent)-[:HAS_QUESTION]->(recommended:Question)
-        WHERE recommended.questionId <> q.questionId AND NOT EXISTS {
-          MATCH (u)-[:ANSWERED]->(recommended)
+        WITH u, q, a, parent, labels(parent) AS parentLabels, c
+
+        CALL {
+          WITH u, q, c
+          MATCH (c)-[:HAS_CHAPTER|HAS_SUBCONTENT*]->()-[:HAS_QUESTION]->(recommended:Question)
+          WHERE recommended.questionId <> q.questionId AND NOT EXISTS {
+            MATCH (u)-[:ANSWERED]->(recommended)
+          }
+          RETURN COLLECT(DISTINCT recommended)[0..4] AS recommendedQuestions
         }
-        RETURN q, a, parent, parentLabels,
-              COLLECT(DISTINCT recommended) AS recommendedQuestions`,
-      { userId, courseId, questionId }
-    );
+
+        RETURN q, a, parent, parentLabels, recommendedQuestions
+        `,
+        { userId, courseId, questionId }
+      );
+
 
     if (result.records.length === 0) {
       throw new NotFoundException('Question not found');
@@ -337,9 +416,12 @@ export class CoursesService {
         text: question.text,
         answer: answer.text
       },
-      currentProgress: await this.getProgressCount(courseId, userId),
+      currentProgress: (await this.getUserProgress(courseId, userId)).finishedCount,
       totalItems: await this.getTotalItemsCount(courseId)
     };
+    } catch (error) {
+      throw new InternalServerErrorException(error)
+    }
   }
 
 
@@ -371,7 +453,7 @@ export class CoursesService {
         id: chapter.chapterId,
         title: chapter.title,
         text: chapter.content,
-        questions,
+        recommendedQuestions: questions,
         currentProgress: 0,
         totalItems: await this.getTotalItemsCount(courseId)
       };
@@ -380,78 +462,6 @@ export class CoursesService {
       throw new InternalServerErrorException(error)
     }
   }
-
-  private async getNextUnfinishedContent(courseId: string, userId: string, progress: any): Promise<LearnResponseDto> {
-    // Get the last answered question to determine context
-    const lastQuestion = await this.neo4jService.read(
-      `MATCH (u:User {userId: $userId})-[:ANSWERED]->(q:Question)
-     WHERE (q)-[:BELONGS_TO]->(:Course {courseId: $courseId})
-     RETURN q ORDER BY q.answeredAt DESC LIMIT 1`,
-      { userId, courseId }
-    );
-
-    if (lastQuestion.records.length > 0) {
-      const lastQ = lastQuestion.records[0].get('q').properties;
-      return this.getNextContentBasedOnQuestion(courseId, userId, lastQ.questionId);
-    }
-
-    // Fallback to content-based progression
-    return this.getNextUnfinishedChapter(courseId, userId);
-  }
-
-  private async getNextContentBasedOnQuestion(courseId: string, userId: string, lastQuestionId: string): Promise<LearnResponseDto> {
-    // Find connected content that hasn't been finished
-    const result = await this.neo4jService.read(
-      `MATCH (u:User {userId: $userId})-[:ANSWERED]->(q:Question {questionId: $lastQuestionId})
-     MATCH (q)<-[:HAS_QUESTION]-(parent)
-     WITH u, parent
-     OPTIONAL MATCH (parent)-[:NEXT|HAS_SUBCONTENT]->(nextContent)
-     WHERE NOT (u)-[:FINISHED]->(nextContent)
-     WITH u, nextContent ORDER BY nextContent.createdAt LIMIT 1
-     OPTIONAL MATCH (nextContent)-[:HAS_QUESTION]->(question:Question)
-     WHERE NOT (u)-[:ANSWERED]->(question)
-     RETURN nextContent, labels(nextContent) AS contentLabels, 
-            COLLECT(DISTINCT question)[0..5] AS questions`,
-      { userId, courseId, lastQuestionId }
-    );
-
-    if (result.records.length === 0) {
-      return this.getNextUnfinishedChapter(courseId, userId);
-    }
-
-    const record = result.records[0];
-    const content = record.get('nextContent').properties;
-    const contentLabels = record.get('contentLabels');
-    const questions = record.get('questions').map(q => ({
-      id: q.properties.questionId,
-      text: q.properties.text
-    }));
-
-    const type = contentLabels.includes('Chapter') ? 'content' : 'subcontent';
-
-    return {
-      type,
-      id: content.chapterId || content.subContentId,
-      title: content.title,
-      text: content.content,
-      questions,
-      currentProgress: await this.getProgressCount(courseId, userId),
-      totalItems: await this.getTotalItemsCount(courseId)
-    };
-  }
-
-  // Helper methods
-  private async getProgressCount(courseId: string, userId: string): Promise<number> {
-    const result = await this.neo4jService.read(
-      `MATCH (u:User {userId: $userId})-[:FINISHED]->(finished)
-     WHERE (finished:Chapter)-[:BELONGS_TO]->(:Course {courseId: $courseId}) OR
-           (finished:SubContent)-[:BELONGS_TO]->(:Course {courseId: $courseId})
-     RETURN COUNT(DISTINCT finished) AS count`,
-      { userId, courseId }
-    );
-    return result.records[0].get('count').toNumber();
-  }
-
   private async getTotalItemsCount(courseId: string): Promise<number> {
     const result = await this.neo4jService.read(
       `MATCH (c:Course {courseId: $courseId})-[:HAS_CHAPTER]->(chapter:Chapter)
@@ -467,8 +477,10 @@ export class CoursesService {
   private async getUserProgress(courseId: string, userId: string): Promise<{ finishedCount: number }> {
     const result = await this.neo4jService.read(
       `MATCH (u:User {userId: $userId})-[:FINISHED]->(content)
-     WHERE (content)-[:BELONGS_TO]->(:Course {courseId: $courseId})
-     RETURN COUNT(content) AS finishedCount`,
+      WHERE (content)-[:BELONGS_TO]->(:Course {courseId: $courseId}) OR
+            (content)-[:BELONGS_TO]->(:Chapter)-[:BELONGS_TO]->(:Course {courseId: $courseId}) OR
+            (content)-[:BELONGS_TO]->(:SubContent)-[:BELONGS_TO*]->(:Course {courseId: $courseId})
+      RETURN COUNT(DISTINCT content) AS finishedCount`,
       { userId, courseId }
     );
 
@@ -477,128 +489,165 @@ export class CoursesService {
     };
   }
 
-  private async getNextUnfinishedChapter(courseId: string, userId: string): Promise<LearnResponseDto> {
-    // Find the earliest chapter that hasn't been finished
-    const result = await this.neo4jService.read(
-      `MATCH (u:User {userId: $userId})
-     MATCH (c:Course {courseId: $courseId})-[:HAS_CHAPTER]->(chapter:Chapter)
-     WHERE NOT (u)-[:FINISHED]->(chapter)
-     WITH u, chapter ORDER BY chapter.createdAt LIMIT 1
-     OPTIONAL MATCH (chapter)-[:HAS_QUESTION]->(question:Question)
-     WHERE NOT (u)-[:ANSWERED]->(question)
-     RETURN chapter, COLLECT(DISTINCT question)[0..5] AS questions`,
-      { courseId, userId }
-    );
-
-    if (result.records.length === 0) {
-      // If all chapters are finished, check for unfinished subcontent
-      return this.getNextUnfinishedSubContent(courseId, userId);
-    }
-
-    const record = result.records[0];
-    const chapter = record.get('chapter').properties;
-    const questions = record.get('questions').map(q => ({
-      id: q.properties.questionId,
-      text: q.properties.text
-    }));
-
-    return {
-      type: 'content',
-      id: chapter.chapterId,
-      title: chapter.title,
-      text: chapter.content,
-      questions,
-      currentProgress: await this.getProgressCount(courseId, userId),
-      totalItems: await this.getTotalItemsCount(courseId)
-    };
-  }
-
-  private async getNextUnfinishedSubContent(courseId: string, userId: string): Promise<LearnResponseDto> {
-    // Find the earliest subcontent that hasn't been finished
-    const result = await this.neo4jService.read(
-      `MATCH (u:User {userId: $userId})
-     MATCH (c:Course {courseId: $courseId})-[:HAS_CHAPTER]->(chapter:Chapter)
-     MATCH (chapter)-[:HAS_SUBCONTENT]->(subcontent:SubContent)
-     WHERE NOT (u)-[:FINISHED]->(subcontent)
-     WITH u, subcontent ORDER BY subcontent.createdAt LIMIT 1
-     OPTIONAL MATCH (subcontent)-[:HAS_QUESTION]->(question:Question)
-     WHERE NOT (u)-[:ANSWERED]->(question)
-     RETURN subcontent, COLLECT(DISTINCT question)[0..5] AS questions`,
-      { courseId, userId }
-    );
-
-    if (result.records.length === 0) {
-      throw new NotFoundException('No unfinished content found in this course');
-    }
-
-    const record = result.records[0];
-    const subcontent = record.get('subcontent').properties;
-    const questions = record.get('questions').map(q => ({
-      id: q.properties.questionId,
-      text: q.properties.text
-    }));
-
-    return {
-      type: 'subcontent',
-      id: subcontent.subContentId,
-      title: subcontent.title,
-      text: subcontent.content,
-      questions,
-      currentProgress: await this.getProgressCount(courseId, userId),
-      totalItems: await this.getTotalItemsCount(courseId)
-    };
-  }
-
 
 
   // Finish
   // src/courses/courses.service.ts
-  async markContentAsFinished(
-    courseId: string,
-    userId: string,
-    contentId: string,
-    type: 'content' | 'subcontent'
-  ): Promise<void> {
-    try {
 
-      const label = type === 'content' ? 'Chapter' : 'SubContent';
-      const idProperty = type === 'content' ? 'chapterId' : 'subContentId';
 
-      // Verify content exists and belongs to course
-      const contentExists = await this.neo4jService.read(
-        `MATCH (c:Course {courseId: $courseId})-[:HAS_CHAPTER]->()-[:HAS_SUBCONTENT*0..1]->(content:${label} {${idProperty}: $contentId})
-     RETURN COUNT(content) > 0 AS exists`,
-        { courseId, contentId }
-      );
+async markContentAsFinished(
+  courseId: string,
+  userId: string,
+  contentId: string,
+  type: 'content' | 'subcontent'
+): Promise<{
+  totalProgress: number;
+  completed: boolean;
+  totalContent: number;
+  progress: number;
+  progressPercentage: number;
+}> {
+    const label = type === 'content' ? 'Chapter' : 'SubContent';
+    const idProperty = type === 'content' ? 'chapterId' : 'subContentId';
 
-      if (!contentExists.records[0].get('exists')) {
-        throw new NotFoundException('Content not found in this course');
-      }
+    // Verify content exists and belongs to course
+    const contentExists = await this.neo4jService.read(
+      `
+      MATCH (c:Course {courseId: $courseId})-[:HAS_CHAPTER]->()-[:HAS_SUBCONTENT*0..1]->(content:${label} {${idProperty}: $contentId})
+      RETURN COUNT(content) > 0 AS exists
+      `,
+      { courseId, contentId }
+    );
 
-      // Mark content as finished
-      await this.neo4jService.write(
-        `MATCH (u:User {userId: $userId})
-     MATCH (content:${label} {${idProperty}: $contentId})
-     WHERE NOT (u)-[:FINISHED]->(content)
-     MERGE (u)-[:FINISHED {at: datetime()}]->(content)`,
-        { userId, contentId }
-      );
-
-      // Mark all questions under this content as answered
-      await this.neo4jService.write(
-        `MATCH (u:User {userId: $userId})
-     MATCH (content:${label} {${idProperty}: $contentId})
-     OPTIONAL MATCH (content)-[:HAS_QUESTION]->(q1:Question)
-     OPTIONAL MATCH (content)-[:HAS_SUBCONTENT*]->(sub)-[:HAS_QUESTION]->(q2:Question)
-     WITH u, collect(DISTINCT q1) + collect(DISTINCT q2) AS questions
-     UNWIND questions AS q
-     WITH u, q
-     WHERE q IS NOT NULL AND NOT (u)-[:ANSWERED]->(q)
-     MERGE (u)-[:ANSWERED {at: datetime()}]->(q)`,
-        { userId, contentId }
-      );
-    } catch (error) {
-      throw new InternalServerErrorException(error)
+    if (!contentExists.records[0].get('exists')) {
+      throw new NotFoundException('Content not found in this course');
     }
-  }
+
+    // Mark content as finished
+    await this.neo4jService.write(
+      `
+      MATCH (u:User {userId: $userId})
+      MATCH (content:${label} {${idProperty}: $contentId})
+      WHERE NOT (u)-[:FINISHED]->(content)
+      MERGE (u)-[:FINISHED {at: datetime()}]->(content)
+      `,
+      { userId, contentId }
+    );
+
+    // Mark ONLY DIRECTLY CONNECTED questions as answered
+    await this.neo4jService.write(
+      `
+      MATCH (u:User {userId: $userId})
+      MATCH (content:${label} {${idProperty}: $contentId})-[:HAS_QUESTION]->(q:Question)
+      WHERE NOT (u)-[:ANSWERED]->(q)
+      MERGE (u)-[:ANSWERED {at: datetime()}]->(q)
+      `,
+      { userId, contentId }
+    );
+
+    // Count total Chapter + SubContent under the course
+  const contentCountResult = await this.neo4jService.read(
+    `
+    MATCH (c:Course {courseId: $courseId})
+    OPTIONAL MATCH (c)-[:HAS_CHAPTER]->(ch:Chapter)
+    OPTIONAL MATCH (ch)-[:HAS_SUBCONTENT*]->(sc:SubContent)
+    RETURN COUNT(DISTINCT ch) + COUNT(DISTINCT sc) AS totalContent
+    `,
+    { courseId }
+  );
+  const totalContent = contentCountResult.records[0].get('totalContent').toInt();
+
+  // Count user's finished content (Chapter/SubContent) linked to this course
+  const finishedContentResult = await this.neo4jService.read(
+    `
+    MATCH (u:User {userId: $userId})-[:FINISHED]->(content)
+    WHERE (content)-[:BELONGS_TO*]->(:Course {courseId: $courseId})
+    RETURN COUNT(DISTINCT content) AS finishedCount
+    `,
+    { userId, courseId }
+  );
+    const progress = finishedContentResult.records[0].get('finishedCount').toInt();
+
+    const progressPercentage = totalContent > 0 ? Math.round((progress / totalContent) * 100) : 0;
+
+    return {
+      totalProgress: progress,
+      completed: progress >= totalContent,
+      totalContent,
+      progress,
+      progressPercentage
+    };
+}
+
+async enrollInCourse(courseId: string, userId: string): Promise<void> {
+    // Check if the course exists
+    const courseExists = await this.neo4jService.read(
+      `MATCH (c:Course {courseId: $courseId}) RETURN c`,
+      { courseId }
+    );
+
+    if (courseExists.records.length === 0) {
+      throw new NotFoundException('Course not found');
+    }
+
+    // Check if the user is already enrolled in the course
+    const alreadyEnrolled = await this.neo4jService.read(
+      `MATCH (u:User {userId: $userId})-[:ENROLLED_IN]->(c:Course {courseId: $courseId})
+      RETURN COUNT(u) AS count`,
+      { userId, courseId }
+    );
+
+    if (alreadyEnrolled.records[0].get('count').toInt() > 0) {
+      throw new BadRequestException('User is already enrolled in this course');
+    }
+
+    // Enroll the user in the course
+    await this.neo4jService.write(
+      `
+      MATCH (u:User {userId: $userId}), (c:Course {courseId: $courseId})
+      MERGE (u)-[:ENROLLED_IN {at: datetime()}]->(c)
+      `,
+      { userId, courseId }
+    );
+}
+
+async resetCourseProgress(courseId: string, userId: string): Promise<{ message: string }> {
+    // Verify user is enrolled in the course
+    const isEnrolled = await this.neo4jService.read(
+      `MATCH (u:User {userId: $userId})-[:ENROLLED_IN]->(c:Course {courseId: $courseId})
+       RETURN COUNT(u) > 0 AS enrolled`,
+      { userId, courseId }
+    );
+
+    if (!isEnrolled.records[0].get('enrolled')) {
+      throw new NotFoundException('User is not enrolled in this course');
+    }
+
+    try {
+      // Delete all FINISHED relationships for Chapters and SubContents in this course
+      await this.neo4jService.write(
+        `MATCH (u:User {userId: $userId})-[f:FINISHED]->(content)
+         WHERE (content:Chapter)-[:BELONGS_TO]->(:Course {courseId: $courseId})
+            OR (content:SubContent)-[:BELONGS_TO]->(:Chapter)-[:BELONGS_TO]->(:Course {courseId: $courseId})
+         DELETE f`,
+        { userId, courseId }
+      );
+
+      // Delete all ANSWERED relationships for Questions in this course
+      // Including questions from Chapters and SubContents
+      await this.neo4jService.write(
+        `MATCH (u:User {userId: $userId})-[a:ANSWERED]->(q:Question)
+         WHERE (q)<-[:HAS_QUESTION]-(:Chapter)-[:BELONGS_TO]->(:Course {courseId: $courseId})
+            OR (q)<-[:HAS_QUESTION]-(:SubContent)-[:BELONGS_TO]->(:Chapter)-[:BELONGS_TO]->(:Course {courseId: $courseId})
+         DELETE a`,
+        { userId, courseId }
+      );
+
+      return { message: 'Course progress has been reset successfully' };
+    } catch (error) {
+      console.error('Error resetting course progress:', error);
+      throw new InternalServerErrorException('Failed to reset course progress');
+    }
+}
+
 }
