@@ -34,20 +34,21 @@ let CoursesController = class CoursesController {
         const userId = req.user.sub;
         return this.coursesService.getEnrolledCourses(userId);
     }
-    async getLearningContent(courseId, questionId, req) {
+    async getLearningContent(courseId, questionId, contentId, req) {
         const userId = req.user.sub;
-        return this.coursesService.getLearningContent(courseId, userId, questionId);
+        return this.coursesService.getLearningContent(courseId, userId, questionId, contentId);
     }
     async finishContent(finishContentDto, req) {
         const userId = req.user.sub;
         const { courseId, contentId, type } = finishContentDto;
-        const { totalProgress, completed, totalContent, progress, progressPercentage } = await this.coursesService.markContentAsFinished(courseId, userId, contentId, type);
+        const { totalProgress, completed, totalContent, progress, progressPercentage, lastInteracted } = await this.coursesService.markContentAsFinished(courseId, userId, contentId, type);
         return {
             success: true,
             completed,
             totalContent,
             progress,
-            progressPercentage
+            progressPercentage,
+            lastInteracted
         };
     }
     async enrollInCourse(body, req) {
@@ -91,9 +92,10 @@ __decorate([
     (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
     __param(0, (0, common_1.Param)('courseId')),
     __param(1, (0, common_1.Query)('questionId')),
-    __param(2, (0, common_1.Req)()),
+    __param(2, (0, common_1.Query)('contentId')),
+    __param(3, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:paramtypes", [String, String, String, Object]),
     __metadata("design:returntype", Promise)
 ], CoursesController.prototype, "getLearningContent", null);
 __decorate([

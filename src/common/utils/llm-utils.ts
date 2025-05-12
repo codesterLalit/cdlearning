@@ -69,16 +69,16 @@ Respond with only valid JSON. Do not include any commentary or explanation outsi
     try {
       const result = await this.ai.models.generateContent({
         model: 'gemini-2.0-flash-001',
-        contents: prompt,
+        contents: prompt
       });
-      return this.parseResponse(result.text);
+      return this.parseResponse(result.text, prompt);
     } catch (error) {
       console.error("Error generating content:", error);
       throw new Error("Failed to generate course content");
     }
   }
 
-  private parseResponse(response: string) {
+  private async parseResponse(response: string, prompt: string, attemptCount = 1): Promise<any> {
     try {
       // First, try to parse directly in case it's clean JSON
       return JSON.parse(response);
@@ -113,8 +113,21 @@ Respond with only valid JSON. Do not include any commentary or explanation outsi
         
         return parsedData;
       } catch (finalError) {
-        console.error('Failed to parse response:', finalError);
-        throw new Error('Invalid course content format');
+        // If we haven't reached 3 total attempts, retry the entire generation
+        if (attemptCount < 3) {
+          console.warn(`JSON parsing failed, retrying (attempt ${attemptCount}/3)...`);
+          // Wait for a short time before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Retry the entire generation process
+          const newResult = await this.ai.models.generateContent({
+            model: 'gemini-2.0-flash-001',
+            contents: prompt,
+          });
+          return this.parseResponse(newResult.text, prompt, attemptCount + 1);
+        }
+        
+        console.error('Failed to parse response after 3 total attempts:', finalError);
+        throw new Error('Invalid course content format after 3 total attempts');
       }
     }
   }

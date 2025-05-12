@@ -1,6 +1,5 @@
 import { Neo4jService } from 'nest-neo4j';
 import { CreateCourseDto } from './dto/create-course.dto';
-import { UUIDTypes } from 'uuid';
 import { CourseResponseDto } from './dto/course-response.dto';
 import { LearnResponseDto } from './dto/learn-response.dto';
 export declare class CoursesService {
@@ -31,7 +30,9 @@ export declare class CoursesService {
     private importCourseToNeo4j;
     getAvailableCourses(userId: string): Promise<CourseResponseDto[]>;
     getEnrolledCourses(userId: string): Promise<CourseResponseDto[]>;
-    getLearningContent(courseId: string, userId: string, questionId?: UUIDTypes): Promise<LearnResponseDto>;
+    getLearningContent(courseId: string, userId: string, questionId?: string, contentId?: string): Promise<LearnResponseDto>;
+    private getCourseHierarchy;
+    private getRecommendedQuestions;
     private getNextUnfinishedItem;
     private getQuestionWithAnswer;
     private getFirstChapterContent;
@@ -43,6 +44,7 @@ export declare class CoursesService {
         totalContent: number;
         progress: number;
         progressPercentage: number;
+        lastInteracted: string | number;
     }>;
     enrollInCourse(courseId: string, userId: string): Promise<void>;
     resetCourseProgress(courseId: string, userId: string): Promise<{

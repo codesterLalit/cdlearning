@@ -21,6 +21,9 @@ I want the course to be curiosity-driven. For each chapter and its sub-content:
 - Provide a detailed answer for each question.
 - Make sure users must understand the content to answer the question fully.
 - Content should be comprehensive.
+- maintain the order of chapter based on serialNumber
+- maintain order of sub_content with chapter serial number then order for example for chapter with serialNumber '1', sub_content's serial number should be 1.1 and so on.
+- make course as Comprehensive and long as possible
 
 The response must strictly follow this JSON structure/schema:
 
@@ -30,6 +33,7 @@ The response must strictly follow this JSON structure/schema:
   "chapters": [
     {
       "title": "Chapter Title",
+      "serialNumber": 1,
       "content": "Chapter content...",
       "questions": [
         {
@@ -41,6 +45,8 @@ The response must strictly follow this JSON structure/schema:
         {
           "title": "Sub-section title",
           "content": "Sub-section content...",
+          "serialNumber": 1.1,
+
           "questions": [
             {
               "question": "A curiosity-based question about this sub-topic",
@@ -60,16 +66,16 @@ Respond with only valid JSON. Do not include any commentary or explanation outsi
         try {
             const result = await this.ai.models.generateContent({
                 model: 'gemini-2.0-flash-001',
-                contents: prompt,
+                contents: prompt
             });
-            return this.parseResponse(result.text);
+            return this.parseResponse(result.text, prompt);
         }
         catch (error) {
             console.error("Error generating content:", error);
             throw new Error("Failed to generate course content");
         }
     }
-    parseResponse(response) {
+    async parseResponse(response, prompt, attemptCount = 1) {
         try {
             return JSON.parse(response);
         }
@@ -95,8 +101,17 @@ Respond with only valid JSON. Do not include any commentary or explanation outsi
                 return parsedData;
             }
             catch (finalError) {
-                console.error('Failed to parse response:', finalError);
-                throw new Error('Invalid course content format');
+                if (attemptCount < 3) {
+                    console.warn(`JSON parsing failed, retrying (attempt ${attemptCount}/3)...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    const newResult = await this.ai.models.generateContent({
+                        model: 'gemini-2.0-flash-001',
+                        contents: prompt,
+                    });
+                    return this.parseResponse(newResult.text, prompt, attemptCount + 1);
+                }
+                console.error('Failed to parse response after 3 total attempts:', finalError);
+                throw new Error('Invalid course content format after 3 total attempts');
             }
         }
     }
