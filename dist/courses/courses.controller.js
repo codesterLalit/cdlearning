@@ -57,7 +57,7 @@ let CoursesController = class CoursesController {
         return { success: true };
     }
     async resetProgress(courseId, req) {
-        return this.coursesService.resetCourseProgress(courseId, req.user.userId);
+        return this.coursesService.resetCourseProgress(courseId, req.user.sub);
     }
 };
 exports.CoursesController = CoursesController;
@@ -116,6 +116,7 @@ __decorate([
 ], CoursesController.prototype, "enrollInCourse", null);
 __decorate([
     (0, common_1.Delete)(':courseId/progress'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Param)('courseId')),
     __param(1, (0, common_1.Request)()),

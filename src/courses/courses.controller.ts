@@ -37,11 +37,12 @@ export class CoursesController {
   @UseGuards(AuthGuard)
   async getLearningContent(
     @Param('courseId') courseId: string,
-    @Query('questionId') questionId: UUIDTypes,
+    @Query('questionId') questionId: string,
+    @Query('contentId') contentId: string,
     @Req() req
   ): Promise<LearnResponseDto> {
     const userId = req.user.sub;
-    return this.coursesService.getLearningContent(courseId, userId, questionId);
+    return this.coursesService.getLearningContent(courseId, userId, questionId, contentId);
   }
 
   @Post('finish-content')
@@ -55,6 +56,7 @@ export class CoursesController {
     totalContent: number;
     progress: number;
     progressPercentage: number;
+    lastInteracted: number | string
   }> {
     const userId = req.user.sub;
     const { courseId, contentId, type } = finishContentDto;
@@ -64,7 +66,8 @@ export class CoursesController {
       completed,
       totalContent,
       progress,
-      progressPercentage
+      progressPercentage,
+      lastInteracted
     } = await this.coursesService.markContentAsFinished(
       courseId,
       userId,
@@ -77,7 +80,8 @@ export class CoursesController {
       completed,
       totalContent,
       progress,
-      progressPercentage
+      progressPercentage,
+      lastInteracted
     };
   }
 

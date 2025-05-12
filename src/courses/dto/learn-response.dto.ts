@@ -1,20 +1,22 @@
-// courses/dto/learn-response.dto.ts
 export class LearnResponseDto {
-    type: 'content' | 'subcontent' | 'question';
+  type: 'content' | 'subcontent';
+  id: string;
+  title: string;
+  text: string;
+  recommendedQuestions: { id: string; text: string }[];
+  requestedQuestion?: {
     id: string;
-    title?: string;
-    text?: string;
-    recommendedQuestions?:any;
-    requestedQuestion?:any;
-    question?: {
-      id: string;
-      text: string;
-      answer?: string; // Only included when showing answer
-    };
-    questions?: {
-      id: string;
-      text: string;
-    }[];
-    currentProgress: number;
-    totalItems: number;
-  }
+    text: string;
+    answer: string;
+  };
+  currentProgress: number;
+  totalItems: number;
+  courseHierarchy: {
+    id: string;
+    type: 'content' | 'subcontent';
+    title: string;
+    serialNumber: number;
+    parentId?: string;
+    current: boolean;
+  }[];
+}

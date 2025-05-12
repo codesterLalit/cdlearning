@@ -23,6 +23,9 @@ I want the course to be curiosity-driven. For each chapter and its sub-content:
 - Provide a detailed answer for each question.
 - Make sure users must understand the content to answer the question fully.
 - Content should be comprehensive.
+- maintain the order of chapter based on serialNumber
+- maintain order of sub_content with chapter serial number then order for example for chapter with serialNumber '1', sub_content's serial number should be 1.1 and so on.
+- make course as Comprehensive and long as possible
 
 The response must strictly follow this JSON structure/schema:
 
@@ -32,6 +35,7 @@ The response must strictly follow this JSON structure/schema:
   "chapters": [
     {
       "title": "Chapter Title",
+      "serialNumber": 1,
       "content": "Chapter content...",
       "questions": [
         {
@@ -43,6 +47,8 @@ The response must strictly follow this JSON structure/schema:
         {
           "title": "Sub-section title",
           "content": "Sub-section content...",
+          "serialNumber": 1.1,
+
           "questions": [
             {
               "question": "A curiosity-based question about this sub-topic",
