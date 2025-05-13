@@ -131,4 +131,54 @@ Respond with only valid JSON. Do not include any commentary or explanation outsi
       }
     }
   }
+
+  async validateTopic(topic: string): Promise<{ canBeCourse: boolean, reason: string }> {
+    const validationPrompt = `
+  You are an expert course evaluator. Given a topic, determine if it can logically be expanded into a comprehensive educational course with structured chapters and sub-sections.
+  
+  Respond only with a valid JSON in this format:
+  {
+    "canBeCourse": true | false,
+    "reason": "Explanation (if canBeCourse is false, otherwise can be empty. Keep it short and precises not exceeding character count to 100.)"
+  }
+  
+  Use your judgment to check:
+  - Is the topic educational?
+  - Can it be broken down into multiple learning segments?
+  - Is there enough depth to generate content for at least a few chapters?
+  
+  Here is the topic: "${topic}"
+  `;
+  
+    try {
+      const result = await this.ai.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: validationPrompt
+      });
+  
+      const response = result.text.trim();
+  
+      try {
+        // Attempt to parse JSON directly
+        return JSON.parse(response);
+      } catch {
+        // Try to extract JSON from markdown
+        const codeBlockMatch = response.match(/```(?:json)?\n([\s\S]*?)\n```/);
+        const jsonString = codeBlockMatch ? codeBlockMatch[1].trim() : response.trim();
+  
+        const json = JSON.parse(jsonString);
+        if (typeof json.canBeCourse === 'boolean' && 'reason' in json) {
+          return json;
+        }
+  
+        throw new Error('Invalid structure in LLM response');
+      }
+    } catch (error) {
+      console.error("Error validating topic:", error);
+      return {
+        canBeCourse: false,
+        reason: 'LLM validation failed or returned invalid format'
+      };
+    }
+  }
 }

@@ -6,7 +6,6 @@ import { CreateCourseDto } from './dto/create-course.dto';
 import { CourseResponseDto } from './dto/course-response.dto';
 import { LearnResponseDto } from './dto/learn-response.dto';
 import { FinishContentDto } from './dto/finish-content.dto';
-import { UUIDTypes } from 'uuid';
 
 @Controller('courses')
 export class CoursesController {
@@ -16,21 +15,21 @@ export class CoursesController {
   @UseGuards(AuthGuard)
   async createCourse(@Body() createCourseDto: CreateCourseDto, @Req() req) {
     const userId = req.user.sub; // From JWT
-    return this.coursesService.createOrEnrollCourse(createCourseDto, userId);
+    return this.coursesService.creation.createOrEnrollCourse(createCourseDto, userId);
   }
 
   @Get('available')
   @UseGuards(AuthGuard)
   async getAvailableCourses(@Req() req): Promise<CourseResponseDto[]> {
     const userId = req.user.sub;
-    return this.coursesService.getAvailableCourses(userId);
+    return this.coursesService.enrollment.getAvailableCourses(userId);
   }
 
   @Get('enrolled')
   @UseGuards(AuthGuard)
   async getEnrolledCourses(@Req() req): Promise<CourseResponseDto[]> {
     const userId = req.user.sub;
-    return this.coursesService.getEnrolledCourses(userId);
+    return this.coursesService.enrollment.getEnrolledCourses(userId);
   }
 
   @Get('learn/:courseId')
@@ -42,7 +41,7 @@ export class CoursesController {
     @Req() req
   ): Promise<LearnResponseDto> {
     const userId = req.user.sub;
-    return this.coursesService.getLearningContent(courseId, userId, questionId, contentId);
+    return this.coursesService.learning.getLearningContent(courseId, userId, questionId, contentId);
   }
 
   @Post('finish-content')
@@ -68,7 +67,7 @@ export class CoursesController {
       progress,
       progressPercentage,
       lastInteracted
-    } = await this.coursesService.markContentAsFinished(
+    } = await this.coursesService.progress.markContentAsFinished(
       courseId,
       userId,
       contentId,
@@ -95,7 +94,7 @@ export class CoursesController {
     const userId = req.user.sub;
     const { courseId } = body;
 
-    await this.coursesService.enrollInCourse(courseId, userId);
+    await this.coursesService.enrollment.enrollInCourse(courseId, userId);
 
     return { success: true };
   }
@@ -108,7 +107,7 @@ export class CoursesController {
     @Param('courseId') courseId: string,
     @Request() req: any
   ) {
-    return this.coursesService.resetCourseProgress(courseId, req.user.sub);
+    return this.coursesService.progress.resetCourseProgress(courseId, req.user.sub);
   }
 
 }
