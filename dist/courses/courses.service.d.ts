@@ -1,53 +1,16 @@
 import { Neo4jService } from 'nest-neo4j';
-import { CreateCourseDto } from './dto/create-course.dto';
-import { CourseResponseDto } from './dto/course-response.dto';
-import { LearnResponseDto } from './dto/learn-response.dto';
+import { CourseCreationService } from './course-creation.service';
+import { CourseLearningService } from './course-learning.service';
+import { CourseProgressService } from './course-progress.service';
+import { CourseEnrollmentService } from './course-enrollment.service';
+import { ConfigService } from '@nestjs/config';
 export declare class CoursesService {
     private readonly neo4jService;
-    private courseGenerator;
-    constructor(neo4jService: Neo4jService);
-    createOrEnrollCourse(createCourseDto: CreateCourseDto, userId: string): Promise<{
-        message: string;
-        course: {
-            courseId: any;
-            title: any;
-            complexity: any;
-            distance: number;
-        };
-        enrolled: boolean;
-    } | {
-        message: string;
-        course: {
-            courseId: string;
-            title: any;
-            complexity: any;
-            topic: any;
-        };
-        enrolled: boolean;
-    }>;
-    private findSimilarCourse;
-    private enrollUserInCourse;
-    private importCourseToNeo4j;
-    getAvailableCourses(userId: string): Promise<CourseResponseDto[]>;
-    getEnrolledCourses(userId: string): Promise<CourseResponseDto[]>;
-    getLearningContent(courseId: string, userId: string, questionId?: string, contentId?: string): Promise<LearnResponseDto>;
-    private getCourseHierarchy;
-    private getRecommendedQuestions;
-    private getNextUnfinishedItem;
-    private getQuestionWithAnswer;
-    private getFirstChapterContent;
-    private getTotalItemsCount;
-    private getUserProgress;
-    markContentAsFinished(courseId: string, userId: string, contentId: string, type: 'content' | 'subcontent'): Promise<{
-        totalProgress: number;
-        completed: boolean;
-        totalContent: number;
-        progress: number;
-        progressPercentage: number;
-        lastInteracted: string | number;
-    }>;
-    enrollInCourse(courseId: string, userId: string): Promise<void>;
-    resetCourseProgress(courseId: string, userId: string): Promise<{
-        message: string;
-    }>;
+    private courseProgressService;
+    private configService;
+    creation: CourseCreationService;
+    learning: CourseLearningService;
+    progress: CourseProgressService;
+    enrollment: CourseEnrollmentService;
+    constructor(neo4jService: Neo4jService, courseProgressService: CourseProgressService, configService: ConfigService);
 }

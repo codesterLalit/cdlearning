@@ -12,14 +12,16 @@ const courses_controller_1 = require("./courses.controller");
 const courses_service_1 = require("./courses.service");
 const nest_neo4j_1 = require("nest-neo4j");
 const jwt_1 = require("@nestjs/jwt");
+const course_progress_service_1 = require("./course-progress.service");
+const config_1 = require("@nestjs/config");
 let CoursesModule = class CoursesModule {
 };
 exports.CoursesModule = CoursesModule;
 exports.CoursesModule = CoursesModule = __decorate([
     (0, common_1.Module)({
-        imports: [nest_neo4j_1.Neo4jModule, jwt_1.JwtModule],
+        imports: [nest_neo4j_1.Neo4jModule, jwt_1.JwtModule, config_1.ConfigModule],
         controllers: [courses_controller_1.CoursesController],
-        providers: [courses_service_1.CoursesService],
+        providers: [courses_service_1.CoursesService, course_progress_service_1.CourseProgressService],
     })
 ], CoursesModule);
 //# sourceMappingURL=courses.module.js.map

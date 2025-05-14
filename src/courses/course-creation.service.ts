@@ -6,14 +6,14 @@ import * as levenshtein from 'fastest-levenshtein';
 import { v4 as uuidv4 } from 'uuid';
 import { CourseGenerator } from 'src/common/utils/llm-utils';
 import { CreateCourseDto } from './dto/create-course.dto';
-import { CourseResponseDto } from './dto/course-response.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class CourseCreationService {
   private courseGenerator: CourseGenerator;
 
-  constructor(private readonly neo4jService: Neo4jService) {
-    this.courseGenerator = new CourseGenerator();
+  constructor(private readonly neo4jService: Neo4jService, private configService: ConfigService) {
+    this.courseGenerator = new CourseGenerator(configService);
   }
 
   async createOrEnrollCourse(createCourseDto: CreateCourseDto, userId: string) {

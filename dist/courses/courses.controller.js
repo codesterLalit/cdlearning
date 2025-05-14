@@ -24,24 +24,24 @@ let CoursesController = class CoursesController {
     }
     async createCourse(createCourseDto, req) {
         const userId = req.user.sub;
-        return this.coursesService.createOrEnrollCourse(createCourseDto, userId);
+        return this.coursesService.creation.createOrEnrollCourse(createCourseDto, userId);
     }
     async getAvailableCourses(req) {
         const userId = req.user.sub;
-        return this.coursesService.getAvailableCourses(userId);
+        return this.coursesService.enrollment.getAvailableCourses(userId);
     }
     async getEnrolledCourses(req) {
         const userId = req.user.sub;
-        return this.coursesService.getEnrolledCourses(userId);
+        return this.coursesService.enrollment.getEnrolledCourses(userId);
     }
     async getLearningContent(courseId, questionId, contentId, req) {
         const userId = req.user.sub;
-        return this.coursesService.getLearningContent(courseId, userId, questionId, contentId);
+        return this.coursesService.learning.getLearningContent(courseId, userId, questionId, contentId);
     }
     async finishContent(finishContentDto, req) {
         const userId = req.user.sub;
         const { courseId, contentId, type } = finishContentDto;
-        const { totalProgress, completed, totalContent, progress, progressPercentage, lastInteracted } = await this.coursesService.markContentAsFinished(courseId, userId, contentId, type);
+        const { totalProgress, completed, totalContent, progress, progressPercentage, lastInteracted } = await this.coursesService.progress.markContentAsFinished(courseId, userId, contentId, type);
         return {
             success: true,
             completed,
@@ -54,11 +54,11 @@ let CoursesController = class CoursesController {
     async enrollInCourse(body, req) {
         const userId = req.user.sub;
         const { courseId } = body;
-        await this.coursesService.enrollInCourse(courseId, userId);
+        await this.coursesService.enrollment.enrollInCourse(courseId, userId);
         return { success: true };
     }
     async resetProgress(courseId, req) {
-        return this.coursesService.resetCourseProgress(courseId, req.user.sub);
+        return this.coursesService.progress.resetCourseProgress(courseId, req.user.sub);
     }
 };
 exports.CoursesController = CoursesController;

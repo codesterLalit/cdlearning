@@ -124,7 +124,6 @@ export class CourseLearningService {
 
 
         let currentContentQuestions = currentContentResult.records.map(r => (r.get('q').properties.questionId));
-          console.log(currentContentQuestions)
         
     // If we didn't get enough questions, get from current content
     if (questions.length < 6 && currentContentId) {

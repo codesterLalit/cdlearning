@@ -1,11 +1,12 @@
 // src/courses/utils/course-generator.util.ts
 import { GoogleGenAI } from '@google/genai';
+import { ConfigService } from '@nestjs/config';
 
 export class CourseGenerator {
   private ai: GoogleGenAI;
 
-  constructor() {
-    this.ai = new GoogleGenAI({ apiKey: 'AIzaSyBhm4YxIsiUJghqxa_mzoNpwJQqi1bWHAE' });
+  constructor(private configSerivce: ConfigService) {
+    this.ai = new GoogleGenAI({ apiKey: configSerivce.get<string>('LLM_API') });
   }
 
   async generate(topic: string, complexityLevel: string) {
